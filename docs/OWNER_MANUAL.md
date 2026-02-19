@@ -35,6 +35,7 @@ The platform is split into three layers:
 - unattended-upgrades enabled.
 - Secrets stored in `/etc/stack/secrets` (root-owned, restricted permissions).
 - Postgres has no public port binding and is attached only to `backend_internal` network.
+- `keith` is not in the Docker group; Docker operations are performed as `deploy`.
 
 ## 4) Networking behavior
 
@@ -42,6 +43,10 @@ The platform is split into three layers:
 - `websecure` entrypoint on port 443 terminates TLS.
 - Domain routing is label-driven in app stack compose files.
 - Postgres is reachable by service name on internal Docker network, not from internet.
+
+Web response hardening:
+- HSTS enabled
+- CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy enabled via Traefik middleware
 
 ## 5) Certificate behavior
 

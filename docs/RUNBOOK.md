@@ -6,6 +6,11 @@
 - OS: Ubuntu 24.04
 - Size: `g6-nanode-1` (2GB)
 
+## Current access model
+- `keith` is admin for SSH and sudo operations.
+- `keith` is intentionally **not** in the Docker group.
+- Use `deploy` for direct Docker/Compose operations.
+
 ## Repository layout
 - `infra/terraform/` Linode instance + firewall
 - `bootstrap/ansible/` hardening + Docker + deployment

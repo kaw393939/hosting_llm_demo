@@ -12,6 +12,10 @@
         update_cache: true
         cache_valid_time: 3600
 
+    - name: Upgrade installed packages
+      ansible.builtin.apt:
+        upgrade: safe
+
     - name: Install base packages
       ansible.builtin.apt:
         name:
@@ -32,7 +36,7 @@
       ansible.builtin.user:
         name: "{{ admin_user }}"
         groups: sudo
-        append: true
+        append: false
         shell: /bin/bash
         create_home: true
 
@@ -79,12 +83,6 @@
     - name: Ensure deploy in docker group
       ansible.builtin.user:
         name: "{{ deploy_user }}"
-        groups: docker
-        append: true
-
-    - name: Ensure admin in docker group
-      ansible.builtin.user:
-        name: "{{ admin_user }}"
         groups: docker
         append: true
 
@@ -192,6 +190,12 @@
           PasswordAuthentication no
           PubkeyAuthentication yes
           KbdInteractiveAuthentication no
+          X11Forwarding no
+          AllowTcpForwarding no
+          AllowAgentForwarding no
+          MaxAuthTries 3
+          ClientAliveInterval 300
+          ClientAliveCountMax 2
       notify: Restart ssh
 
     - name: Configure UFW rules

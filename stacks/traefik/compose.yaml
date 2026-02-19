@@ -3,6 +3,9 @@ services:
     image: traefik:v3.5
     container_name: traefik
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
     environment:
       - DOCKER_API_VERSION=1.44
     command:
@@ -25,6 +28,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./acme:/acme
+    tmpfs:
+      - /tmp
     networks:
       - traefik_proxy
 
