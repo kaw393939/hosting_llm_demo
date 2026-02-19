@@ -36,6 +36,11 @@ The platform is split into three layers:
 - Secrets stored in `/etc/stack/secrets` (root-owned, restricted permissions).
 - Postgres has no public port binding and is attached only to `backend_internal` network.
 - `keith` is not in the Docker group; Docker operations are performed as `deploy`.
+- Direct SSH login as `deploy` is blocked (`DenyUsers deploy`).
+
+SSH hardening additions:
+- SSH rate-limited via UFW (`LIMIT` on 22/tcp)
+- fail2ban tuned to `maxretry=3` with increasing ban duration
 
 ## 4) Networking behavior
 

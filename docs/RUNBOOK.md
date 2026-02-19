@@ -9,7 +9,10 @@
 ## Current access model
 - `keith` is admin for SSH and sudo operations.
 - `keith` is intentionally **not** in the Docker group.
-- Use `deploy` for direct Docker/Compose operations.
+- `deploy` owns stack files and runs Docker/Compose, but direct SSH login as `deploy` is intentionally blocked.
+
+Docker operations:
+- Run Docker commands via `deploy` locally on the host (interactive shell), or use `sudo -u deploy ...` from `keith`.
 
 ## Repository layout
 - `infra/terraform/` Linode instance + firewall

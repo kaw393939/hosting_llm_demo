@@ -51,7 +51,7 @@
     - name: Ensure deploy user exists
       ansible.builtin.user:
         name: "{{ deploy_user }}"
-        shell: /bin/bash
+        shell: /usr/sbin/nologin
         create_home: true
 
     - name: Set admin authorized key
@@ -190,12 +190,17 @@
           PasswordAuthentication no
           PubkeyAuthentication yes
           KbdInteractiveAuthentication no
+          PermitEmptyPasswords no
           X11Forwarding no
           AllowTcpForwarding no
           AllowAgentForwarding no
           MaxAuthTries 3
+          MaxSessions 2
+          LoginGraceTime 30
+          LogLevel VERBOSE
           ClientAliveInterval 300
           ClientAliveCountMax 2
+          DenyUsers deploy
       notify: Restart ssh
 
     - name: Configure UFW rules
@@ -203,11 +208,28 @@
         ufw --force reset
         ufw default deny incoming
         ufw default allow outgoing
-        ufw allow 22/tcp
+        ufw limit 22/tcp
         ufw allow 80/tcp
         ufw allow 443/tcp
         ufw --force enable
       changed_when: false
+
+    - name: Configure fail2ban jail settings
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/jail.d/sshd.local
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [sshd]
+          enabled = true
+          maxretry = 3
+          findtime = 10m
+          bantime = 1h
+          bantime.increment = true
+          bantime.factor = 2
+          ignoreip = 127.0.0.1/8 ::1
+      notify: Restart fail2ban
 
     - name: Enable unattended upgrades
       ansible.builtin.copy:
@@ -330,6 +352,11 @@
     - name: Restart ssh
       ansible.builtin.systemd:
         name: ssh
+        state: restarted
+
+    - name: Restart fail2ban
+      ansible.builtin.systemd:
+        name: fail2ban
         state: restarted
 
     - name: Restart journald
