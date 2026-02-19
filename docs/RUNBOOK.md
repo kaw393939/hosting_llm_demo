@@ -14,6 +14,9 @@
 Docker operations:
 - Run Docker commands via `deploy` locally on the host (interactive shell), or use `sudo -u deploy ...` from `keith`.
 
+Security reference:
+- See [Security Practices](SECURITY_PRACTICES.md) for the complete list of hardening controls and verification commands.
+
 ## Repository layout
 - `infra/terraform/` Linode instance + firewall
 - `bootstrap/ansible/` hardening + Docker + deployment

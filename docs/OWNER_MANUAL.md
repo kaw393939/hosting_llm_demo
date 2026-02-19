@@ -27,6 +27,9 @@ The platform is split into three layers:
 
 ## 3) Security baseline currently implemented
 
+Full reference:
+- See [Security Practices](SECURITY_PRACTICES.md) for the authoritative checklist of controls.
+
 - SSH root login disabled in effective config.
 - Password authentication disabled; key-based SSH only.
 - UFW configured to allow only `22/tcp`, `80/tcp`, `443/tcp` inbound.

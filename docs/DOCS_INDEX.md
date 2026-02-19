@@ -2,6 +2,7 @@
 
 - [README](../README.md)
 - [Owner Manual](OWNER_MANUAL.md)
+- [Security Practices](SECURITY_PRACTICES.md)
 - [Technical Architecture](TECHNICAL_ARCHITECTURE.md)
 - [Runbook](RUNBOOK.md)
 - [Next Steps for Solo Consultant Platform](NEXT_STEPS_SOLO_CONSULTANT.md)

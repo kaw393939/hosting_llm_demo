@@ -41,6 +41,7 @@ This repository provisions and operates a secure Linode-based platform using Ter
 ## Read this first
 
 - [Owner Manual](docs/OWNER_MANUAL.md)
+- [Security Practices](docs/SECURITY_PRACTICES.md)
 - [Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md)
 - [Runbook](docs/RUNBOOK.md)
 - [Next Steps for Solo Consultant Platform](docs/NEXT_STEPS_SOLO_CONSULTANT.md)
