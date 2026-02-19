@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=40
+      - -c
+      - random_page_cost=1.1
+    volumes:
+      - ./data:/var/lib/postgresql/data
+      - /etc/stack/secrets/postgres_password:/run/secrets/postgres_password:ro
+    networks:
+      - backend_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  backend_internal:
+    external: true

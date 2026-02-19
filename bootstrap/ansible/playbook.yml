@@ -1,0 +1,334 @@
+---
+- name: Harden host and deploy platform
+  hosts: linode
+  become: true
+  vars:
+    traefik_src: "{{ playbook_dir }}/../../stacks/traefik"
+    postgres_src: "{{ playbook_dir }}/../../stacks/postgres"
+    app_src: "{{ playbook_dir }}/../../stacks/apps/keithwilliams.org"
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - ufw
+          - fail2ban
+          - unattended-upgrades
+          - apt-transport-https
+          - software-properties-common
+          - jq
+          - lynis
+        state: present
+
+    - name: Ensure admin user exists
+      ansible.builtin.user:
+        name: "{{ admin_user }}"
+        groups: sudo
+        append: true
+        shell: /bin/bash
+        create_home: true
+
+    - name: Allow passwordless sudo for admin user
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/90-{{ admin_user }}"
+        owner: root
+        group: root
+        mode: "0440"
+        content: "{{ admin_user }} ALL=(ALL) NOPASSWD:ALL\n"
+
+    - name: Ensure deploy user exists
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        shell: /bin/bash
+        create_home: true
+
+    - name: Set admin authorized key
+      ansible.posix.authorized_key:
+        user: "{{ admin_user }}"
+        key: "{{ admin_pubkey }}"
+        state: present
+
+    - name: Set deploy authorized key
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ deploy_pubkey }}"
+        state: present
+
+    - name: Install Docker packages
+      ansible.builtin.apt:
+        update_cache: true
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+
+    - name: Enable Docker service
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Ensure deploy in docker group
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        groups: docker
+        append: true
+
+    - name: Ensure admin in docker group
+      ansible.builtin.user:
+        name: "{{ admin_user }}"
+        groups: docker
+        append: true
+
+    - name: Create Docker networks
+      ansible.builtin.shell: |
+        docker network create traefik_proxy || true
+        docker network create backend_internal || true
+      changed_when: false
+
+    - name: Create required directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "{{ item.mode }}"
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+      loop:
+        - { path: "/srv/stacks", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/stacks/traefik", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/stacks/postgres", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/stacks/apps", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/stacks/apps/keithwilliams.org", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/stacks/traefik/acme", mode: "0700", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/stacks/postgres/data", mode: "0700", owner: "999", group: "999" }
+        - { path: "/srv/backups/postgres", mode: "0750", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/reports/lynis", mode: "0750", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/reports/trivy", mode: "0750", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/reports/health", mode: "0750", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/etc/stack/secrets", mode: "0700", owner: "root", group: "root" }
+
+    - name: Ensure acme file exists
+      ansible.builtin.file:
+        path: /srv/stacks/traefik/acme/acme.json
+        state: touch
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0600"
+
+    - name: Create postgres password secret if missing
+      ansible.builtin.shell: |
+        if [ ! -f /etc/stack/secrets/postgres_password ]; then
+          openssl rand -base64 32 > /etc/stack/secrets/postgres_password
+          chmod 600 /etc/stack/secrets/postgres_password
+          chown root:root /etc/stack/secrets/postgres_password
+        fi
+      changed_when: false
+
+    - name: Copy Traefik stack files
+      ansible.builtin.copy:
+        src: "{{ traefik_src }}/"
+        dest: /srv/stacks/traefik/
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: preserve
+
+    - name: Copy Postgres stack files
+      ansible.builtin.copy:
+        src: "{{ postgres_src }}/"
+        dest: /srv/stacks/postgres/
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: preserve
+
+    - name: Copy app stack files
+      ansible.builtin.copy:
+        src: "{{ app_src }}/"
+        dest: /srv/stacks/apps/keithwilliams.org/
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: preserve
+
+    - name: Write Traefik environment file
+      ansible.builtin.copy:
+        dest: /srv/stacks/traefik/.env
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0600"
+        content: |
+          ACME_EMAIL={{ acme_email }}
+
+    - name: Ensure journald drop-in directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Set journald retention limit
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/99-retention.conf
+        mode: "0644"
+        content: |
+          [Journal]
+          SystemMaxUse=500M
+          SystemKeepFree=200M
+      notify: Restart journald
+
+    - name: Configure SSH hardening
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/99-hardening.conf
+        mode: "0644"
+        content: |
+          PermitRootLogin no
+          PasswordAuthentication no
+          PubkeyAuthentication yes
+          KbdInteractiveAuthentication no
+      notify: Restart ssh
+
+    - name: Configure UFW rules
+      ansible.builtin.shell: |
+        ufw --force reset
+        ufw default deny incoming
+        ufw default allow outgoing
+        ufw allow 22/tcp
+        ufw allow 80/tcp
+        ufw allow 443/tcp
+        ufw --force enable
+      changed_when: false
+
+    - name: Enable unattended upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+
+    - name: Ensure fail2ban enabled and started
+      ansible.builtin.systemd:
+        name: fail2ban
+        enabled: true
+        state: started
+
+    - name: Deploy postgres backup script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/postgres-nightly-backup.sh
+        owner: root
+        group: root
+        mode: "0750"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ts=$(date +%F_%H%M%S)
+          out=/srv/backups/postgres/postgres_${ts}.sql.gz
+          docker exec -i postgres sh -c 'PGPASSWORD="$(cat /run/secrets/postgres_password)" pg_dump -U ${POSTGRES_USER} ${POSTGRES_DB}' | gzip -9 > "$out"
+          find /srv/backups/postgres -type f -name 'postgres_*.sql.gz' -mtime +14 -delete
+
+    - name: Deploy weekly lynis script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/weekly-lynis.sh
+        owner: root
+        group: root
+        mode: "0750"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ts=$(date +%F_%H%M%S)
+          lynis audit system --quick > "/srv/reports/lynis/lynis_${ts}.txt" 2>&1
+
+    - name: Deploy weekly trivy script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/weekly-trivy.sh
+        owner: root
+        group: root
+        mode: "0750"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ts=$(date +%F_%H%M%S)
+          images=$(docker images --format '{{"{{"}}.Repository{{"}}"}}:{{"{{"}}.Tag{{"}}"}}' | grep -v '<none>' | sort -u)
+          out="/srv/reports/trivy/trivy_${ts}.txt"
+          : > "$out"
+          for image in $images; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL,HIGH "$image" >> "$out" || true
+            echo "" >> "$out"
+          done
+
+    - name: Deploy health check script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/http-healthcheck.sh
+        owner: root
+        group: root
+        mode: "0750"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ts=$(date +%F_%H%M%S)
+          logfile="/srv/reports/health/alerts.log"
+          if ! curl -fsS -H 'Host: keithwilliams.org' http://127.0.0.1/ >/dev/null; then
+            echo "$ts keithwilliams.org health check failed" >> "$logfile"
+          fi
+          if ! curl -fsS -H 'Host: www.keithwilliams.org' http://127.0.0.1/ >/dev/null; then
+            echo "$ts www.keithwilliams.org health check failed" >> "$logfile"
+          fi
+
+    - name: Create nightly backup cron
+      ansible.builtin.cron:
+        name: "postgres nightly backup"
+        minute: "10"
+        hour: "2"
+        job: "/usr/local/bin/postgres-nightly-backup.sh"
+
+    - name: Create weekly lynis cron
+      ansible.builtin.cron:
+        name: "weekly lynis audit"
+        minute: "30"
+        hour: "3"
+        weekday: "0"
+        job: "/usr/local/bin/weekly-lynis.sh"
+
+    - name: Create weekly trivy cron
+      ansible.builtin.cron:
+        name: "weekly trivy scan"
+        minute: "45"
+        hour: "3"
+        weekday: "0"
+        job: "/usr/local/bin/weekly-trivy.sh"
+
+    - name: Create health check cron
+      ansible.builtin.cron:
+        name: "http health check"
+        minute: "*/5"
+        job: "/usr/local/bin/http-healthcheck.sh"
+
+    - name: Bring up Traefik stack
+      ansible.builtin.command: docker compose -f /srv/stacks/traefik/compose.yaml up -d
+      become_user: "{{ deploy_user }}"
+
+    - name: Bring up Postgres stack
+      ansible.builtin.command: docker compose -f /srv/stacks/postgres/compose.yaml up -d
+      become_user: "{{ deploy_user }}"
+
+    - name: Bring up app stack
+      ansible.builtin.command: docker compose -f /srv/stacks/apps/keithwilliams.org/compose.yaml up -d
+      become_user: "{{ deploy_user }}"
+
+  handlers:
+    - name: Restart ssh
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+
+    - name: Restart journald
+      ansible.builtin.systemd:
+        name: systemd-journald
+        state: restarted

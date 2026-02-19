@@ -1,0 +1,8 @@
+---
+admin_user: keith
+deploy_user: deploy
+admin_pubkey: ""
+deploy_pubkey: ""
+acme_email: "ops@keithwilliams.org"
+postgres_db: app
+postgres_user: app

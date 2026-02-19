@@ -1,0 +1,21 @@
+services:
+  keithwilliams_site:
+    image: nginx:1.27-alpine
+    container_name: keithwilliams_site
+    restart: unless-stopped
+    volumes:
+      - ./site:/usr/share/nginx/html:ro
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik_proxy
+      - traefik.http.routers.keith.rule=Host(`keithwilliams.org`) || Host(`www.keithwilliams.org`)
+      - traefik.http.routers.keith.entrypoints=websecure
+      - traefik.http.routers.keith.tls=true
+      - traefik.http.routers.keith.tls.certresolver=le
+      - traefik.http.services.keith.loadbalancer.server.port=80
+    networks:
+      - traefik_proxy
+
+networks:
+  traefik_proxy:
+    external: true
