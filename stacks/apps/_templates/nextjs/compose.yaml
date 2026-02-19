@@ -1,28 +1,35 @@
 services:
-  keithwilliams_site:
-    image: nginxinc/nginx-unprivileged:1.27-alpine
-    container_name: keithwilliams_site
+  app:
+    # Build a Next.js app folder that includes this Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nextjs-app:local
+    container_name: nextjs_app
     restart: unless-stopped
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    tmpfs:
-      - /tmp
-      - /var/cache/nginx
-      - /var/run
-    volumes:
-      - ./site:/usr/share/nginx/html:ro
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NEXT_TELEMETRY_DISABLED=1
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik_proxy
-      - traefik.http.routers.keith.rule=Host(`keithwilliams.org`) || Host(`www.keithwilliams.org`)
-      - traefik.http.routers.keith.entrypoints=websecure
-      - traefik.http.routers.keith.tls=true
-      - traefik.http.routers.keith.tls.certresolver=le
-      - traefik.http.routers.keith.middlewares=compress@docker,secure-headers@docker
+
+      # Replace with your domain(s)
+      - traefik.http.routers.app.rule=Host(`example.com`) || Host(`www.example.com`)
+      - traefik.http.routers.app.entrypoints=websecure
+      - traefik.http.routers.app.tls=true
+      - traefik.http.routers.app.tls.certresolver=le
+
+      # Middlewares: gzip + security headers (optional but recommended)
+      - traefik.http.routers.app.middlewares=compress@docker,secure-headers@docker
       - traefik.http.middlewares.compress.compress=true
+
       - traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000
       - traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true
       - traefik.http.middlewares.secure-headers.headers.stsPreload=true
@@ -31,8 +38,11 @@ services:
       - traefik.http.middlewares.secure-headers.headers.frameDeny=true
       - traefik.http.middlewares.secure-headers.headers.referrerPolicy=no-referrer
       - traefik.http.middlewares.secure-headers.headers.permissionsPolicy=geolocation=(),camera=(),microphone=(),payment=(),usb=()
+
+      # Adjust CSP for your app if you use third-party scripts or CDNs
       - traefik.http.middlewares.secure-headers.headers.customResponseHeaders.Content-Security-Policy=default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
-      - traefik.http.services.keith.loadbalancer.server.port=8080
+
+      - traefik.http.services.app.loadbalancer.server.port=3000
     networks:
       - traefik_proxy
 

@@ -44,6 +44,8 @@ This repository provisions and operates a secure Linode-based platform using Ter
 - [Security Practices](docs/SECURITY_PRACTICES.md)
 - [Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md)
 - [Runbook](docs/RUNBOOK.md)
+- [Performance: Lighthouse](docs/performance/LIGHTHOUSE.md)
+- [Performance: Next.js Tuning](docs/performance/NEXTJS_TUNING.md)
 - [Next Steps for Solo Consultant Platform](docs/NEXT_STEPS_SOLO_CONSULTANT.md)
 
 ## Security notes

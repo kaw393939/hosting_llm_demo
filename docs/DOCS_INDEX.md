@@ -6,6 +6,8 @@
 - [Technical Architecture](TECHNICAL_ARCHITECTURE.md)
 - [Runbook](RUNBOOK.md)
 - [Next Steps for Solo Consultant Platform](NEXT_STEPS_SOLO_CONSULTANT.md)
+- [Performance: Lighthouse](performance/LIGHTHOUSE.md)
+- [Performance: Next.js Tuning](performance/NEXTJS_TUNING.md)
 
 ## Suggested reading order
 
