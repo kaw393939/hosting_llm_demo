@@ -1,4 +1,4 @@
-# Security Practices (Owner’s Reference)
+# Security Practices (Owner's Reference)
 
 This document is the authoritative description of the security posture implemented by this repo’s infrastructure + Ansible bootstrap + Docker stacks.
 
@@ -10,7 +10,8 @@ Scope:
 - One Ubuntu 24.04 Linode VM
 - Traefik edge router (ports 80/443)
 - SSH administration (port 22)
-- Docker Compose workloads (apps + Postgres)
+- Docker Compose workloads (Traefik, Postgres, Watchtower, app stack)
+- keithwilliams.org Next.js blog with Google OAuth (Auth.js v5)
 
 Primary threats addressed:
 - Internet scanning and opportunistic exploitation of exposed services
@@ -18,6 +19,9 @@ Primary threats addressed:
 - Misconfiguration (accidentally publishing databases or admin UIs)
 - Secret leakage (tokens/passwords in git or world-readable files)
 - Container escape risk amplification (privileged containers, Docker group access)
+- Spam / abuse of forms (post creation, comments)
+- Unauthorized posting or administrative access
+- XSS / injection attempts against user content
 
 Non-goals (not implemented yet):
 - High availability / multi-region failover
@@ -56,6 +60,19 @@ Important note:
 - `keith` currently has broad sudo rights (`NOPASSWD: ALL`). This is convenient, but it is a high-impact trust boundary: compromise of `keith` becomes full host compromise.
 - A recommended next change is to replace broad sudo with a “break-glass” workflow (documented in the roadmap).
 
+### Application authentication (keithwilliams.org)
+- Google OAuth only via Auth.js v5 (no passwords stored)
+- Database-backed sessions (can be revoked server-side)
+
+### Application authorization (RBAC)
+- Roles: `admin` and `user`
+- First user to sign in is promoted to `admin` automatically
+- Mutations are protected server-side:
+  - Create post: admin only
+  - Admin dashboard: admin only
+  - Change roles / delete post / delete any comment: admin only
+  - Create comment: authenticated users
+
 ## 2) Network security
 
 ### Cloud firewall (Linode)
@@ -77,6 +94,12 @@ Expected host-level listeners:
 
 Postgres is not published to the host.
 
+### Traefik edge rate limiting
+Applied via app router middleware:
+- Average: 30 requests/second
+- Burst: 60
+- Period: 1 second
+
 ## 3) Brute-force and intrusion resistance
 
 ### fail2ban
@@ -93,6 +116,9 @@ Postgres is not published to the host.
 - Real secrets are not committed.
 - `.env` is gitignored.
 - `.env.example` exists for documentation only.
+
+Important: do not commit OAuth secrets or `NEXTAUTH_SECRET` into Ansible `group_vars`.
+Use local-only var files, CI secrets, or a secrets manager.
 
 ### Secrets on the server
 - Stored in `/etc/stack/secrets` (root-owned, `0700`).
@@ -114,11 +140,18 @@ Postgres password:
 ### Security headers
 Enforced via Traefik middleware on the app router:
 - `Strict-Transport-Security` (HSTS) with subdomains and preload
-- `Content-Security-Policy` (baseline for static site)
+- `Content-Security-Policy` (Next.js + Google OAuth aware)
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
-- `Referrer-Policy: no-referrer`
+- `Referrer-Policy: strict-origin-when-cross-origin`
 - `Permissions-Policy` disabling common sensors
+
+### CSP (keithwilliams.org)
+Current CSP is set at Traefik:
+- No `unsafe-eval`
+- `unsafe-inline` allowed (required for Next.js)
+- `img-src` allows `https://*.googleusercontent.com` for profile photos
+- `form-action` allows `https://accounts.google.com` for OAuth
 
 ## 6) Container security
 
@@ -132,7 +165,7 @@ Enforced via Traefik middleware on the app router:
 
 ### App containers
 - Prefer unprivileged images.
-- Current site uses `nginxinc/nginx-unprivileged`.
+- Current app uses a non-root Next.js container from Docker Hub.
 - Container hardening:
   - `read_only: true`
   - `no-new-privileges:true`
@@ -181,7 +214,18 @@ Important note:
 
 - A simple curl-based health check runs every 5 minutes and records only failures.
 
-## 12) Verification commands (quick)
+## 12) Application anti-abuse controls
+
+### Honeypot + timing check
+Forms include hidden honeypot fields and a timing threshold to reject bot-like submissions.
+
+### Application-level rate limiting
+In addition to Traefik, the app enforces per-IP and per-user rate limits for:
+- API reads
+- Comment creation
+- Post creation
+
+## 13) Verification commands (quick)
 
 From your workstation:
 - Verify only expected ports are open:

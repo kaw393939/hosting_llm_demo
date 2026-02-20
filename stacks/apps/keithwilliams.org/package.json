@@ -1,0 +1,16 @@
+{
+  "name": "keithwilliams-blog",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:init": "node scripts/init-db.mjs"
+  },
+  "dependencies": {
+    "next": "^15.0.0",
+    "pg": "^8.12.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

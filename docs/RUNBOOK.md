@@ -141,6 +141,19 @@ ssh -i ~/.ssh/id_rsa keith@<server_ipv4> \
     echo NEXTAUTH_URL_len=${#NEXTAUTH_URL}; echo AUTH_URL_len=${#AUTH_URL}"'
 ```
 
+### Secret rotation (recommended)
+
+Rotate the auth secret via Ansible so your **local-only** secrets file stays the source of truth:
+
+1) Update `bootstrap/ansible/group_vars/all.secrets.yml`:
+- set a new `nextauth_secret` (e.g. `openssl rand -base64 32`)
+
+2) Re-run the playbook (see “Bootstrap + deploy stacks”).
+
+Notes:
+- Rotating the secret invalidates existing sessions (users will need to sign in again).
+- Avoid editing `/srv/stacks/apps/keithwilliams.org/.env` by hand except as a break-glass recovery.
+
 ## Admin recovery (if you can't post)
 
 Posting is admin-only. If your user is not an admin and you don't have access to an existing admin account, use the break-glass CLI inside the running container.

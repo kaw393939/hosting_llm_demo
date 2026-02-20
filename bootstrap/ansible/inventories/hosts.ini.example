@@ -1,0 +1,4 @@
+[linode]
+# Fill in your server IP or DNS name.
+# SSH as the hardened admin user (the playbook uses sudo via become).
+platform ansible_host=YOUR_SERVER_IP ansible_user=keith

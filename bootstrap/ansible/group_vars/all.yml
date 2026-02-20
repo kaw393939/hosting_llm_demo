@@ -6,3 +6,6 @@ deploy_pubkey: ""
 acme_email: "ops@keithwilliams.org"
 postgres_db: app
 postgres_user: app
+google_client_id: ""
+google_client_secret: ""
+nextauth_secret: ""

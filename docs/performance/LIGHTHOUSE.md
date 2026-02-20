@@ -4,6 +4,19 @@ This platform is built for repeatability. The goal is:
 - Make measurable improvements (before/after)
 - Keep changes minimal and reversible
 
+## Latest results (keithwilliams.org)
+
+As of 2026-02-19 (Desktop):
+
+- Performance: 100
+- Accessibility: 95
+- Best Practices: 100
+- SEO: 100
+
+Notes:
+- The single failing item was WCAG contrast on small timestamp text (a `time` element with low opacity).
+- A contrast fix was prepared in the app repo; re-run Lighthouse after the new app image is deployed to confirm Accessibility returns to 100.
+
 ## Local prerequisites
 - Node.js + npm
 - A Chrome/Chromium binary
@@ -52,6 +65,22 @@ npx -y lighthouse "$URL" \
 - Unused JS/CSS
 - Image optimization (sizes, next/image)
 - Caching headers (especially `/_next/static/*`)
+
+## Security + auth smoke checks (before/after)
+
+Lighthouse doesn't replace basic correctness checks. Run these after deploys:
+
+```bash
+curl -sSI https://keithwilliams.org/ | head -n 15
+
+# Auth protection
+curl -sSI https://keithwilliams.org/new | head -n 5
+curl -sSI https://keithwilliams.org/admin | head -n 5
+
+# API method restriction
+curl -sS -X POST https://keithwilliams.org/api/posts
+curl -sS -X DELETE https://keithwilliams.org/api/posts
+```
 
 ## Similar tools
 - PageSpeed Insights (field + lab blend)

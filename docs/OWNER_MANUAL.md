@@ -25,6 +25,41 @@ The platform is split into three layers:
    - App containers serve content.
    - Postgres handles persistence on internal network.
 
+## 2.1) keithwilliams.org application model
+
+The primary app running on this platform is https://keithwilliams.org:
+
+- Next.js blog deployed as a Docker Hub image
+- Google OAuth login via Auth.js v5
+- Role-based access control (RBAC): `admin` and `user`
+- Comments: signed-in users can comment; admins can delete any comment
+- Post creation: admin only
+- Anti-abuse: honeypot + timing check and rate limiting (edge + app)
+
+### Admin role bootstrapping
+
+The first user to sign in is automatically promoted to `admin`.
+
+Operational implication:
+- Do the first sign-in yourself (from your own Google account) after initial deployment.
+
+### Admin management
+
+Admins can manage users, posts, and comments at `/admin`.
+
+Notes:
+- Role changes are server-side enforced.
+- The system prevents self-demotion to avoid locking yourself out.
+
+## 2.2) Deployment model for the app
+
+The app is updated via:
+
+1. GitHub Actions builds and pushes `kaw393939/keithwilliams.org` to Docker Hub
+2. Watchtower pulls `:latest` and replaces the running container
+
+This provides "push-to-deploy" without SSHing into the server for routine updates.
+
 ## 3) Security baseline currently implemented
 
 Full reference:
@@ -99,7 +134,19 @@ Cron jobs are installed as root:
    - HTTPS 200
    - certificate SAN contains expected hostnames
 
-## 9) Incident response quick guide
+## 9) If posting or comments are being abused
+
+First-line controls (already implemented):
+- Traefik edge rate limiting
+- App-level per-IP and per-user rate limiting
+- Honeypot + minimum submission time checks
+
+Operational steps:
+- Confirm abuse patterns in Traefik and app logs
+- Temporarily increase rate limiting strictness (Traefik) if necessary
+- Delete abusive comments as admin via `/admin`
+
+## 10) Incident response quick guide
 
 If site is down:
 1. Check host reachability and open ports (`22/80/443`).
@@ -119,7 +166,7 @@ If DB issue:
 2. Review `docker logs postgres`.
 3. Restore latest backup if needed.
 
-## 10) Ownership responsibilities
+## 11) Ownership responsibilities
 
 As owner/operator, you should:
 - Rotate sensitive tokens and SSH keys on a schedule.
@@ -128,14 +175,14 @@ As owner/operator, you should:
 - Test restore process quarterly.
 - Keep documentation in this repo current as topology evolves.
 
-## 11) Known constraints of current architecture
+## 12) Known constraints of current architecture
 
 - Single VM means no high availability.
 - Backups are local-only unless you add offsite sync.
 - No centralized metrics dashboard by default.
 - No staging/production split yet.
 
-## 12) Recommended operating cadence
+## 13) Recommended operating cadence
 
 Daily:
 - Quick site smoke check.

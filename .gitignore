@@ -13,3 +13,6 @@ server_ip.txt
 .tools/
 secrets/
 *.retry
+bootstrap/ansible/inventories/hosts.ini
+bootstrap/ansible/group_vars/all.secrets.yml
+
