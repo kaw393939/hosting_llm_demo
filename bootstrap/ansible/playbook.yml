@@ -33,6 +33,17 @@
           - lynis
         state: present
 
+    - name: Set system hostname
+      ansible.builtin.hostname:
+        name: "{{ platform_hostname }}"
+
+    - name: Ensure /etc/hosts has hostname entry
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^127\\.0\\.1\\.1\\s+'
+        line: "127.0.1.1 {{ platform_hostname }}"
+        state: present
+
     - name: Ensure admin user exists
       ansible.builtin.user:
         name: "{{ admin_user }}"
@@ -176,7 +187,12 @@
         group: "{{ deploy_user }}"
         mode: preserve
 
-    - name: Assert required app secrets are set
+    - name: Check if app environment file already exists
+      ansible.builtin.stat:
+        path: /srv/stacks/apps/keithwilliams.org/.env
+      register: app_env_file
+
+    - name: Assert required app secrets are set (only when bootstrapping app env)
       ansible.builtin.assert:
         that:
           - google_client_id is defined
@@ -187,7 +203,9 @@
           - nextauth_secret | length > 0
         fail_msg: >-
           Missing required app secrets. Provide google_client_id, google_client_secret,
-          and nextauth_secret via the local-only all.secrets.yml file.
+          and nextauth_secret via the local-only all.secrets.yml file, or set
+          force_write_app_env=true to intentionally rewrite the app env.
+      when: (not app_env_file.stat.exists) or (force_write_app_env | default(false) | bool)
 
     - name: Write Traefik environment file
       ansible.builtin.copy:
@@ -198,7 +216,7 @@
         content: |
           ACME_EMAIL={{ acme_email }}
 
-    - name: Write app environment file
+    - name: Write app environment file (only when bootstrapping app env)
       ansible.builtin.shell: |
         umask 077
         pw=$(cat /etc/stack/secrets/postgres_password)
@@ -214,6 +232,7 @@
         EOF
         chown {{ deploy_user }}:{{ deploy_user }} /srv/stacks/apps/keithwilliams.org/.env
       changed_when: false
+      when: (not app_env_file.stat.exists) or (force_write_app_env | default(false) | bool)
 
     - name: Ensure journald drop-in directory exists
       ansible.builtin.file:

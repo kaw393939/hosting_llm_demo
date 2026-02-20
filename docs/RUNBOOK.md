@@ -180,6 +180,20 @@ Root cron entries:
 - `45 3 * * 0 /usr/local/bin/weekly-trivy.sh`
 - `*/5 * * * * /usr/local/bin/http-healthcheck.sh`
 
+### Run baseline scans now (optional)
+
+If you want an initial baseline before Sunday’s cron runs:
+
+```bash
+ssh -i ~/.ssh/id_rsa keith@<server_ipv4>
+
+sudo /usr/local/bin/weekly-lynis.sh
+sudo /usr/local/bin/weekly-trivy.sh
+
+sudo ls -lt /srv/reports/lynis | head
+sudo ls -lt /srv/reports/trivy | head
+```
+
 Paths:
 - Backups: `/srv/backups/postgres/`
 - Lynis reports: `/srv/reports/lynis/`
