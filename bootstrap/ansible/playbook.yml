@@ -266,6 +266,15 @@
         ufw --force enable
       changed_when: false
 
+    - name: Ensure UFW log file is writable by rsyslog
+      ansible.builtin.file:
+        path: /var/log/ufw.log
+        state: touch
+        owner: syslog
+        group: adm
+        mode: "0640"
+      notify: Restart rsyslog
+
     - name: Configure fail2ban jail settings
       ansible.builtin.copy:
         dest: /etc/fail2ban/jail.d/sshd.local
@@ -404,6 +413,11 @@
     - name: Restart ssh
       ansible.builtin.systemd:
         name: ssh
+        state: restarted
+
+    - name: Restart rsyslog
+      ansible.builtin.systemd:
+        name: rsyslog
         state: restarted
 
     - name: Restart fail2ban
