@@ -11,6 +11,12 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - NEXT_TELEMETRY_DISABLED=1
+      # Auth.js / NextAuth (if used):
+      # - NEXTAUTH_URL=https://example.com
+      # - NEXTAUTH_SECRET=<random>
+      # - AUTH_URL=https://example.com
+      # - AUTH_SECRET=<same as NEXTAUTH_SECRET>
+      # - AUTH_TRUST_HOST=true
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
       interval: 10s

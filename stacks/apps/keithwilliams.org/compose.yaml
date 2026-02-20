@@ -1,7 +1,7 @@
 services:
-  keithwilliams_site:
-    image: nginxinc/nginx-unprivileged:1.27-alpine
-    container_name: keithwilliams_site
+  keithwilliams_blog:
+    image: kaw393939/keithwilliams.org:latest
+    container_name: keithwilliams_blog
     restart: unless-stopped
     read_only: true
     security_opt:
@@ -10,32 +10,58 @@ services:
       - ALL
     tmpfs:
       - /tmp
-      - /var/cache/nginx
-      - /var/run
-    volumes:
-      - ./site:/usr/share/nginx/html:ro
+    environment:
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGDATABASE=app
+      - PGUSER=app
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=https://keithwilliams.org
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=${AUTH_URL}
+      - AUTH_TRUST_HOST=true
     labels:
+      - com.centurylinklabs.watchtower.enable=true
       - traefik.enable=true
       - traefik.docker.network=traefik_proxy
       - traefik.http.routers.keith.rule=Host(`keithwilliams.org`) || Host(`www.keithwilliams.org`)
       - traefik.http.routers.keith.entrypoints=websecure
       - traefik.http.routers.keith.tls=true
       - traefik.http.routers.keith.tls.certresolver=le
-      - traefik.http.routers.keith.middlewares=compress@docker,secure-headers@docker
+      - traefik.http.routers.keith.middlewares=rate-limit@docker,compress@docker,secure-headers@docker
+      # ── Rate limiting (Traefik-level) ──────────────────────────────────
+      - traefik.http.middlewares.rate-limit.ratelimit.average=30
+      - traefik.http.middlewares.rate-limit.ratelimit.burst=60
+      - traefik.http.middlewares.rate-limit.ratelimit.period=1s
+      # ── Compression ────────────────────────────────────────────────────
       - traefik.http.middlewares.compress.compress=true
+      # ── Security headers ───────────────────────────────────────────────
       - traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000
       - traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true
       - traefik.http.middlewares.secure-headers.headers.stsPreload=true
       - traefik.http.middlewares.secure-headers.headers.forceSTSHeader=true
       - traefik.http.middlewares.secure-headers.headers.contentTypeNosniff=true
       - traefik.http.middlewares.secure-headers.headers.frameDeny=true
-      - traefik.http.middlewares.secure-headers.headers.referrerPolicy=no-referrer
-      - traefik.http.middlewares.secure-headers.headers.permissionsPolicy=geolocation=(),camera=(),microphone=(),payment=(),usb=()
-      - traefik.http.middlewares.secure-headers.headers.customResponseHeaders.Content-Security-Policy=default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
-      - traefik.http.services.keith.loadbalancer.server.port=8080
+      - traefik.http.middlewares.secure-headers.headers.browserXssFilter=true
+      - traefik.http.middlewares.secure-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      - "traefik.http.middlewares.secure-headers.headers.permissionsPolicy=accelerometer=(),camera=(),geolocation=(),gyroscope=(),magnetometer=(),microphone=(),payment=(),usb=()"
+      - "traefik.http.middlewares.secure-headers.headers.customResponseHeaders.Content-Security-Policy=default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com; font-src 'self' data:; connect-src 'self'; form-action 'self' https://accounts.google.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+      - traefik.http.middlewares.secure-headers.headers.customResponseHeaders.X-Robots-Tag=noai, noimageai
+      - traefik.http.services.keith.loadbalancer.server.port=3000
     networks:
       - traefik_proxy
+      - backend_internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
 networks:
   traefik_proxy:
+    external: true
+  backend_internal:
     external: true

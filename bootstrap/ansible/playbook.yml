@@ -5,6 +5,7 @@
   vars:
     traefik_src: "{{ playbook_dir }}/../../stacks/traefik"
     postgres_src: "{{ playbook_dir }}/../../stacks/postgres"
+    watchtower_src: "{{ playbook_dir }}/../../stacks/watchtower"
     app_src: "{{ playbook_dir }}/../../stacks/apps/keithwilliams.org"
   tasks:
     - name: Update apt cache
@@ -103,10 +104,11 @@
         - { path: "/srv/stacks", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
         - { path: "/srv/stacks/traefik", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
         - { path: "/srv/stacks/postgres", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
+        - { path: "/srv/stacks/watchtower", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
         - { path: "/srv/stacks/apps", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
         - { path: "/srv/stacks/apps/keithwilliams.org", mode: "0755", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
         - { path: "/srv/stacks/traefik/acme", mode: "0700", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
-        - { path: "/srv/stacks/postgres/data", mode: "0700", owner: "999", group: "999" }
+        - { path: "/srv/stacks/postgres/data", mode: "0700", owner: "70", group: "70" }
         - { path: "/srv/backups/postgres", mode: "0750", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
         - { path: "/srv/reports/lynis", mode: "0750", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
         - { path: "/srv/reports/trivy", mode: "0750", owner: "{{ deploy_user }}", group: "{{ deploy_user }}" }
@@ -126,8 +128,20 @@
         if [ ! -f /etc/stack/secrets/postgres_password ]; then
           openssl rand -base64 32 > /etc/stack/secrets/postgres_password
           chmod 600 /etc/stack/secrets/postgres_password
-          chown root:root /etc/stack/secrets/postgres_password
+          chown 70:70 /etc/stack/secrets/postgres_password
         fi
+      changed_when: false
+
+    - name: Ensure Postgres secret readable by postgres UID
+      ansible.builtin.file:
+        path: /etc/stack/secrets/postgres_password
+        owner: "70"
+        group: "70"
+        mode: "0400"
+
+    - name: Ensure Postgres data dir owned by postgres UID
+      ansible.builtin.shell: |
+        chown -R 70:70 /srv/stacks/postgres/data
       changed_when: false
 
     - name: Copy Traefik stack files
@@ -146,6 +160,14 @@
         group: "{{ deploy_user }}"
         mode: preserve
 
+    - name: Copy Watchtower stack files
+      ansible.builtin.copy:
+        src: "{{ watchtower_src }}/"
+        dest: /srv/stacks/watchtower/
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: preserve
+
     - name: Copy app stack files
       ansible.builtin.copy:
         src: "{{ app_src }}/"
@@ -153,6 +175,19 @@
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
         mode: preserve
+
+    - name: Assert required app secrets are set
+      ansible.builtin.assert:
+        that:
+          - google_client_id is defined
+          - google_client_secret is defined
+          - nextauth_secret is defined
+          - google_client_id | length > 0
+          - google_client_secret | length > 0
+          - nextauth_secret | length > 0
+        fail_msg: >-
+          Missing required app secrets. Provide google_client_id, google_client_secret,
+          and nextauth_secret via the local-only all.secrets.yml file.
 
     - name: Write Traefik environment file
       ansible.builtin.copy:
@@ -162,6 +197,23 @@
         mode: "0600"
         content: |
           ACME_EMAIL={{ acme_email }}
+
+    - name: Write app environment file
+      ansible.builtin.shell: |
+        umask 077
+        pw=$(cat /etc/stack/secrets/postgres_password)
+        cat > /srv/stacks/apps/keithwilliams.org/.env <<EOF
+        POSTGRES_PASSWORD=${pw}
+        GOOGLE_CLIENT_ID={{ google_client_id }}
+        GOOGLE_CLIENT_SECRET={{ google_client_secret }}
+        NEXTAUTH_SECRET={{ nextauth_secret }}
+        NEXTAUTH_URL=https://keithwilliams.org
+        AUTH_SECRET={{ nextauth_secret }}
+        AUTH_URL=https://keithwilliams.org
+        AUTH_TRUST_HOST=true
+        EOF
+        chown {{ deploy_user }}:{{ deploy_user }} /srv/stacks/apps/keithwilliams.org/.env
+      changed_when: false
 
     - name: Ensure journald drop-in directory exists
       ansible.builtin.file:
@@ -338,15 +390,15 @@
 
     - name: Bring up Traefik stack
       ansible.builtin.command: docker compose -f /srv/stacks/traefik/compose.yaml up -d
-      become_user: "{{ deploy_user }}"
 
     - name: Bring up Postgres stack
       ansible.builtin.command: docker compose -f /srv/stacks/postgres/compose.yaml up -d
-      become_user: "{{ deploy_user }}"
+
+    - name: Bring up Watchtower stack
+      ansible.builtin.command: docker compose -f /srv/stacks/watchtower/compose.yaml up -d
 
     - name: Bring up app stack
-      ansible.builtin.command: docker compose -f /srv/stacks/apps/keithwilliams.org/compose.yaml up -d
-      become_user: "{{ deploy_user }}"
+      ansible.builtin.command: docker compose -f /srv/stacks/apps/keithwilliams.org/compose.yaml up -d --remove-orphans --pull always
 
   handlers:
     - name: Restart ssh

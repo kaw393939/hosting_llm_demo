@@ -1,10 +1,11 @@
 # Single-Server Linode Platform Runbook
 
 ## Current deployed server
-- IPv4: `69.164.214.207`
-- Host label: `keith-platform`
-- OS: Ubuntu 24.04
-- Size: `g6-nanode-1` (2GB)
+
+This runbook intentionally does not hardcode your server IP.
+
+Convention used by this repo:
+- Store the current server IPv4 in `server_ip.txt` (gitignored)
 
 ## Current access model
 - `keith` is admin for SSH and sudo operations.
@@ -22,7 +23,8 @@ Security reference:
 - `bootstrap/ansible/` hardening + Docker + deployment
 - `stacks/traefik/` edge router
 - `stacks/postgres/` internal Postgres
-- `stacks/apps/keithwilliams.org/` hello site app
+- `stacks/watchtower/` auto-updates for Docker Hub images
+- `stacks/apps/keithwilliams.org/` keithwilliams.org blog (Docker Hub image)
 
 ## Local prerequisites
 - Terraform binary in `./.tools/bin/terraform`
@@ -43,6 +45,18 @@ export TF_VAR_admin_authorized_key="$(cat ~/.ssh/id_rsa.pub)"
 
 Write the output IP to `server_ip.txt`.
 
+## Prepare Ansible files (local-only)
+
+1. Inventory:
+  - Copy `bootstrap/ansible/inventories/hosts.ini.example` → `bootstrap/ansible/inventories/hosts.ini`
+  - Set `ansible_host=YOUR_SERVER_IP` and `ansible_user=keith`
+
+2. Secrets:
+  - Copy `bootstrap/ansible/group_vars/all.secrets.yml.example` → `bootstrap/ansible/group_vars/all.secrets.yml`
+  - Fill in `google_client_id`, `google_client_secret`, `nextauth_secret`
+
+Both files are gitignored.
+
 ## DNS records (GoDaddy)
 Set:
 - `A @ -> <server_ipv4>`
@@ -55,6 +69,7 @@ Set:
 cd bootstrap/ansible
 ../../.tools/ansible-venv/bin/ansible-playbook \
   -i inventories/hosts.ini playbook.yml \
+  -e @group_vars/all.secrets.yml \
   --private-key ~/.ssh/id_rsa \
   -e 'admin_pubkey={{ lookup("file", "~/.ssh/id_rsa.pub") }}' \
   -e 'deploy_pubkey={{ lookup("file", "~/.ssh/id_rsa.pub") }}' \
@@ -82,6 +97,59 @@ ssh -i ~/.ssh/id_rsa keith@<server_ipv4> 'docker ps'
 curl -sSI -H 'Host: keithwilliams.org' http://<server_ipv4> | head -n 5
 curl -skSI --resolve keithwilliams.org:443:<server_ipv4> https://keithwilliams.org | head -n 12
 curl -skSI --resolve www.keithwilliams.org:443:<server_ipv4> https://www.keithwilliams.org | head -n 12
+
+# Auth/RBAC protections
+curl -skSI https://keithwilliams.org/new | head -n 5
+curl -skSI https://keithwilliams.org/admin | head -n 5
+
+# API method restriction
+curl -skS -X POST https://keithwilliams.org/api/posts
+curl -skS -X DELETE https://keithwilliams.org/api/posts
+```
+
+## App deployment model (keithwilliams.org)
+
+Normal path:
+- Push to the app repo `main` branch
+- GitHub Actions builds/pushes the Docker image to Docker Hub
+- Watchtower pulls the new `:latest` image and restarts the container
+
+Manual pull (if you want to force an update immediately):
+```bash
+ssh -i ~/.ssh/id_rsa keith@<server_ipv4>
+cd /srv/stacks/apps/keithwilliams.org
+sudo -u deploy docker compose up -d --pull always --remove-orphans
+```
+
+## Auth.js (Google OAuth) configuration gotcha
+
+Auth.js v5 may require `AUTH_URL` and `AUTH_SECRET` (in addition to the legacy
+`NEXTAUTH_URL` / `NEXTAUTH_SECRET`) depending on your version and deployment.
+
+This stack sets:
+- `NEXTAUTH_URL=https://keithwilliams.org`
+- `AUTH_URL=https://keithwilliams.org`
+- `NEXTAUTH_SECRET=<random>`
+- `AUTH_SECRET=<same as NEXTAUTH_SECRET>`
+
+Safe verification (prints only lengths, never values):
+
+```bash
+ssh -i ~/.ssh/id_rsa keith@<server_ipv4> \
+  'sudo -u deploy sh -lc "cd /srv/stacks/apps/keithwilliams.org; set -a; . ./.env; \
+    echo NEXTAUTH_SECRET_len=${#NEXTAUTH_SECRET}; echo AUTH_SECRET_len=${#AUTH_SECRET}; \
+    echo NEXTAUTH_URL_len=${#NEXTAUTH_URL}; echo AUTH_URL_len=${#AUTH_URL}"'
+```
+
+## Admin recovery (if you can't post)
+
+Posting is admin-only. If your user is not an admin and you don't have access to an existing admin account, use the break-glass CLI inside the running container.
+
+On the server:
+
+```bash
+sudo -u deploy docker exec -i keithwilliams_blog node scripts/admin.mjs list-users
+sudo -u deploy docker exec -i keithwilliams_blog node scripts/admin.mjs promote --email keith@firehose360.com
 ```
 
 ## Notes on TLS issuance
